@@ -1,0 +1,483 @@
+openapi: 3.0.3
+info:
+  title: Grupo 5 — Pedidos (Order Management)
+  version: 1.1.0
+  description: |
+    Contrato REST oficial de Grupo 5, modificado para garantizar la sincronización total
+    con el núcleo transaccional de la malla (Grupos 4, 6 y 8).
+
+    Cambios de sincronización incorporados (Versión 1.1.0):
+    - shippingAddress pasa a ser opcional (nullable: true) debido a que Grupo 4 no captura la dirección en su proceso de checkout actual.
+    - Se incorporan códigos de error explícitos en el POST /orders (INVALID_CURRENCY e INVALID_AMOUNT) como blindaje contra el uso de USD y decimales (float/double) por parte de Grupo 4.
+    - Moneda restringida estrictamente a CLP y montos como enteros (integer/int64) según acuerdos globales.
+    - Sincronización G6 (v1.2 Multi-Origen): Se agrega soporte para almacenar un arreglo de `shipmentIds`, requiriendo que todas las cajas alcancen un estado final para transicionar la orden completa.
+
+  contact:
+    name: Grupo 5 — Pedidos
+
+servers:
+  - url: https://grupo5-pedidos-mock.onrender.com
+    description: Mock público (Prism) — E2
+  - url: https://api-grupo5-pedidos.onrender.com/v1
+    description: Producción (Render) — E3
+  - url: http://localhost:8050/v1
+    description: Desarrollo local
+
+tags:
+  - name: Orders
+    description: Operaciones sobre el ciclo de vida de un pedido.
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  /orders:
+    post:
+      tags: [Orders]
+      summary: Crear un pedido
+      description: >
+        Invocado por Grupo 4 (Checkout) al confirmar una compra. El stock ya
+        fue reservado por G4 antes de esta llamada. Este endpoint es la segunda
+        línea de defensa contra inconsistencias monetarias y de redundancia.
+        Idempotente vía el header `Idempotency-Key`.
+      operationId: createOrder
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            example:
+              userId: "e9d8c7b6-a543-2109-8765-fedcba098765"
+              items:
+                - productId: "f0e9d8c7-b6a5-4321-0987-fedcba098765"
+                  name: "Notebook Lenovo IdeaPad"
+                  quantity: 2
+                  unitPrice: 799990
+                  subtotal: 1599980
+              shippingAddress: null
+              notes: "El carrito no contenía dirección de despacho al momento del checkout (Mitigación G4)"
+      responses:
+        '201':
+          description: Pedido creado de forma exitosa.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '200':
+          description: >
+            La misma `Idempotency-Key` ya fue procesada con el mismo body.
+            Se retorna el objeto existente sin duplicar datos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Body inválido, claves ausentes o conflicto de tipos monetarios con Grupo 4.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingIdempotencyKey:
+                  value:
+                    code: "MISSING_IDEMPOTENCY_KEY"
+                    message: "El header Idempotency-Key es obligatorio."
+                invalidCurrency:
+                  value:
+                    code: "INVALID_CURRENCY"
+                    message: "El marketplace opera exclusivamente con CLP. Se rechazó el intento de pago en USD u otra divisa."
+                invalidAmount:
+                  value:
+                    code: "INVALID_AMOUNT"
+                    message: "Conflicto de tipo de dato. Los montos y subtotales deben ser enteros estrictos (sin decimales float/double)."
+        '401':
+          description: Token ausente o inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >
+            La misma `Idempotency-Key` ya fue usada con un body distinto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "DUPLICATED_ORDER"
+                message: "Esta Idempotency-Key ya fue usada con datos distintos."
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Obtener un pedido por id
+      operationId: getOrderById
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderId'
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      responses:
+        '200':
+          description: Pedido encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Token ausente o inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: El usuario no tiene acceso a este pedido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Pedido no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /orders/{orderId}/status:
+    get:
+      tags: [Orders]
+      summary: Consultar solo el estado actual del pedido
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderId'
+      responses:
+        '200':
+          description: Estado del pedido.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId:
+                    $ref: '#/components/schemas/OrderId'
+                  status:
+                    $ref: '#/components/schemas/OrderStatus'
+    patch:
+      tags: [Orders]
+      summary: Transicionar el estado de un pedido
+      description: >
+        Uso interno y asíncrono. Lo invoca la propia lógica de G5 al consumir un evento
+        de pago de G8, o al ejecutar la mitigación de polling sobre el estado logístico de G6.
+      operationId: updateOrderStatus
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderId'
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/OrderStatus'
+                reason:
+                  type: string
+                  nullable: true
+                  description: Motivo, obligatorio si el nuevo estado es CANCELLED o FAILED.
+            example:
+              status: "PAID"
+      responses:
+        '200':
+          description: Pedido actualizado correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          description: Token ausente o inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Pedido no encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Transición de estado no permitida según la máquina de estados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "INVALID_STATUS_TRANSITION"
+                message: "No se puede pasar de DELIVERED a PAYMENT_PENDING."
+
+  /users/{userId}/orders:
+    get:
+      tags: [Orders]
+      summary: Listar pedidos de un usuario (paginado)
+      description: Consumido por el BFF (Grupo 1) para mostrar el estado del pedido en el frontend.
+      operationId: getOrdersByUser
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - $ref: '#/components/parameters/CorrelationIdHeader'
+      responses:
+        '200':
+          description: Lista paginada de pedidos del usuario.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Token ausente o inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Sin permisos para ver los pedidos de este usuario.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token emitido por Grupo 2. Este servicio NO verifica la firma
+        localmente — reenvía el token a `POST /auth/validate` de Grupo 2.
+
+  parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Obligatorio en POST /orders para evitar pedidos duplicados.
+
+    CorrelationIdHeader:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Trazabilidad transversal entre microservicios del ecosistema.
+
+  schemas:
+
+    OrderId:
+      type: string
+      pattern: '^ORD-\d{8}-\d{3,}$'
+      description: Formato `ORD-YYYYMMDD-NNN`, alineado con G6 y G8.
+      example: "ORD-20260622-001"
+
+    OrderStatus:
+      type: string
+      enum:
+        - CREATED
+        - PAYMENT_PENDING
+        - PAID
+        - STOCK_RESERVED
+        - READY_TO_SHIP
+        - SHIPPED
+        - DELIVERED
+        - CANCELLED
+        - FAILED
+      description: |
+        Estado del pedido en UPPER_SNAKE_CASE.
+        Nota de sincronización G6 (v1.2 Multi-Origen): Dado que G6 devuelve un arreglo de cajas,
+        la orden global en G5 solo transicionará a 'SHIPPED' o 'DELIVERED' cuando TODOS
+        los shipmentIds asociados reporten dicho estado.
+
+    OrderItem:
+      type: object
+      required: [productId, name, quantity, unitPrice, subtotal]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Snapshot del nombre al momento de la compra.
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          type: integer
+          description: CLP, sin decimales. Forzado a entero (int64).
+        subtotal:
+          type: integer
+          description: CLP, sin decimales. Forzado a entero (int64).
+
+    ShippingAddress:
+      type: object
+      required: [street, city, region, country]
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        region:
+          type: string
+        country:
+          type: string
+        postalCode:
+          type: string
+          nullable: true
+
+    CreateOrderRequest:
+      type: object
+      required: [userId, items]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        shippingAddress:
+          $ref: '#/components/schemas/ShippingAddress'
+          nullable: true
+          description: Dirección física. Puede ser nula si Grupo 4 no la arrastra en el checkout.
+        notes:
+          type: string
+          nullable: true
+
+    Order:
+      type: object
+      required: [orderId, userId, status, items, totalAmount, currency, createdAt, updatedAt]
+      properties:
+        orderId:
+          $ref: '#/components/schemas/OrderId'
+        userId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        shipmentIds:
+          type: array
+          description: Arreglo de identificadores físicos devueltos por Logística (G6) para soportar Multi-Origen.
+          items:
+            type: string
+            example: "SHP-a1b2c3d4"
+        shippingAddress:
+          $ref: '#/components/schemas/ShippingAddress'
+          nullable: true
+        subtotal:
+          type: integer
+          description: CLP, sin decimales.
+        shippingCost:
+          type: integer
+          description: CLP, sin decimales.
+        totalAmount:
+          type: integer
+          description: CLP, sin decimales.
+        currency:
+          type: string
+          enum: [CLP]
+          default: CLP
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      required: [page, pageSize, total, totalPages, hasNext, hasPrev]
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true

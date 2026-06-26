@@ -1,0 +1,210 @@
+{
+  "info": {
+    "name": "Grupo 5 — Pedidos (Order Management) - v1.2.0",
+    "description": "Colección oficial de pruebas de contrato actualizada. Diseñada para validar el soporte Multi-Origen (G6) y el escudo defensivo contra tipos de datos monetarios inválidos (G4). Reubicada en la nueva carpeta tests/.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8050"
+    },
+    {
+      "key": "authToken",
+      "value": "test-token-grupo2-auth"
+    },
+    {
+      "key": "orderId",
+      "value": "ORD-20260626-001"
+    },
+    {
+      "key": "userId",
+      "value": "e9d8c7b6-a543-2109-8765-fedcba098765"
+    }
+  ],
+  "item": [
+    {
+      "name": "POST /orders — Crear pedido (Camino Feliz CLP)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "550e8400-e29b-41d4-a716-446655440000" },
+          { "key": "X-Correlation-Id", "value": "99999999-8888-4777-9666-555555555555" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/orders",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"items\": [\n    {\n      \"productId\": \"f0e9d8c7-b6a5-4321-0987-fedcba098765\",\n      \"name\": \"Notebook Lenovo IdeaPad\",\n      \"quantity\": 2,\n      \"unitPrice\": 799990,\n      \"subtotal\": 1599980\n    }\n  ],\n  \"shippingAddress\": null,\n  \"notes\": \"Dirección nula mitigada para Checkout G4\"\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "response": [
+        {
+          "name": "201 Created (esperado)",
+          "code": 201,
+          "status": "Created",
+          "body": "{\n  \"orderId\": \"ORD-20260626-001\",\n  \"userId\": \"e9d8c7b6-a543-2109-8765-fedcba098765\",\n  \"status\": \"CREATED\",\n  \"items\": [\n    {\n      \"productId\": \"f0e9d8c7-b6a5-4321-0987-fedcba098765\",\n      \"name\": \"Notebook Lenovo IdeaPad\",\n      \"quantity\": 2,\n      \"unitPrice\": 799990,\n      \"subtotal\": 1599980\n    }\n  ],\n  \"shipmentIds\": [\"SHP-mock-1\", \"SHP-mock-2\"],\n  \"shippingAddress\": null,\n  \"subtotal\": 1599980,\n  \"shippingCost\": 3500,\n  \"totalAmount\": 1603480,\n  \"currency\": \"CLP\",\n  \"notes\": \"Dirección nula mitigada para Checkout G4\",\n  \"createdAt\": \"2026-06-26T14:00:00Z\",\n  \"updatedAt\": \"2026-06-26T14:00:00Z\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "POST /orders — Rechazar decimales/USD (Fallo de Validación G4)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "550e8400-e29b-41d4-a716-446655440001" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/orders",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"items\": [\n    {\n      \"productId\": \"f0e9d8c7-b6a5-4321-0987-fedcba098765\",\n      \"name\": \"Articulo Invalido G4\",\n      \"quantity\": 1,\n      \"unitPrice\": 1599.98,\n      \"subtotal\": 1599.98\n    }\n  ]\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "response": [
+        {
+          "name": "422 Unprocessable Entity (esperado)",
+          "code": 422,
+          "status": "Unprocessable Entity",
+          "body": "{\n  \"detail\": [\n    {\n      \"type\": \"int_type\",\n      \"loc\": [\"body\", \"items\", 0, \"unitPrice\"],\n      \"msg\": \"Input should be a valid integer\",\n      \"input\": 1599.98\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "POST /orders — Sin Idempotency-Key (debe fallar 400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/orders",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"items\": []\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "response": [
+        {
+          "name": "400 Bad Request (esperado)",
+          "code": 400,
+          "status": "Bad Request"
+        }
+      ]
+    },
+    {
+      "name": "GET /orders/{orderId} — Obtener pedido",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "X-Correlation-Id", "value": "99999999-8888-4777-9666-555555555555" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/orders/{{orderId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders", "{{orderId}}"]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK (esperado)",
+          "code": 200,
+          "status": "OK",
+          "body": "{\n  \"orderId\": \"{{orderId}}\",\n  \"userId\": \"{{userId}}\",\n  \"status\": \"CREATED\",\n  \"items\": [\n    {\n      \"productId\": \"f0e9d8c7-b6a5-4321-0987-fedcba098765\",\n      \"name\": \"Notebook Lenovo IdeaPad\",\n      \"quantity\": 2,\n      \"unitPrice\": 799990,\n      \"subtotal\": 1599980\n    }\n  ],\n  \"shipmentIds\": [\"SHP-mock-1\", \"SHP-mock-2\"],\n  \"shippingAddress\": null,\n  \"subtotal\": 1599980,\n  \"shippingCost\": 3500,\n  \"totalAmount\": 1603480,\n  \"currency\": \"CLP\",\n  \"notes\": null,\n  \"createdAt\": \"2026-06-26T14:00:00Z\",\n  \"updatedAt\": \"2026-06-26T14:00:00Z\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "GET /orders/{orderId} — Sin token (debe fallar 401)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/orders/{{orderId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders", "{{orderId}}"]
+        }
+      },
+      "response": [
+        {
+          "name": "401 Unauthorized (esperado)",
+          "code": 401,
+          "status": "Unauthorized"
+        }
+      ]
+    },
+    {
+      "name": "PATCH /orders/{orderId}/status — Transicionar estado",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Correlation-Id", "value": "99999999-8888-4777-9666-555555555555" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/orders/{{orderId}}/status",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders", "{{orderId}}", "status"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"PAID\"\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK (esperado)",
+          "code": 200,
+          "status": "OK"
+        }
+      ]
+    },
+    {
+      "name": "GET /users/{userId}/orders — Listar pedidos (paginado)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authToken}}" },
+          { "key": "X-Correlation-Id", "value": "99999999-8888-4777-9666-555555555555" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/users/{{userId}}/orders?page=1&pageSize=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["users", "{{userId}}", "orders"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "pageSize", "value": "10" }
+          ]
+        }
+      },
+      "response": [
+        {
+          "name": "200 OK con paginación (esperado)",
+          "code": 200,
+          "status": "OK",
+          "body": "{\n  \"data\": [],\n  \"pagination\": {\n    \"page\": 1,\n    \"pageSize\": 10,\n    \"total\": 0,\n    \"totalPages\": 0,\n    \"hasNext\": false,\n    \"hasPrev\": false\n  }\n}"
+        }
+      ]
+    }
+  ]
+}
