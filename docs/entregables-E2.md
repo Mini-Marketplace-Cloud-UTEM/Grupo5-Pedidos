@@ -6,8 +6,8 @@ Para la Fase E2, el Grupo 5 dispone de dos mecanismos complementarios para servi
 
 | Entorno | URL / Comando | Tipo | Implementación | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **Público (Cloud)** | `https://grupo5-pedidos-mock.onrender.com` | Mock Estático | Prism (Stoplight) | ✅ Desplegado |
-| **Local (Laptop)** | `http://localhost:8050` | Mock Dinámico | FastAPI (`app/main.py`) | ✅ Operativo |
+| **Público (Cloud)** | `https://grupo5-pedidos-mock-kdyl.onrender.com/docs` | Mock Estático | Prism (Stoplight) | ✅ Desplegado |
+| **Local (Laptop)** | `http://localhost:8050/docs` | Mock Dinámico | FastAPI (`app/main.py`) | ✅ Operativo |
 
 ---
 
