@@ -2,11 +2,12 @@ import os
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
+from typing import Optional  # <--- ESTA ES LA LÍNEA QUE FALTABA
 from supabase import create_client, Client
 
-# Credenciales de Supabase API (Diferentes de la URL de conexión de Postgres)
+# Credenciales de Supabase API
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") # Se recomienda usar el service_role key en Render
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # Inicialización segura del cliente de almacenamiento
 supabase_client: Client = None
@@ -37,21 +38,18 @@ async def log_event_to_storage(event_type: str, correlation_id: Optional[str], p
         "payload": payload
     }
 
-    # Particionamiento cronológico exacto exigido por Cristóbal
+    # Particionamiento cronológico exacto
     year = now.strftime("%Y")
     month = now.strftime("%m")
     day = now.strftime("%d")
     
-    # Estructura de carpetas: group-5-pedidos/year=YYYY/month=MM/day=DD/
+    # Estructura de carpetas
     folder_path = f"group-5-pedidos/year={year}/month={month}/day={day}"
     file_name = f"{timestamp_compact}_{event_type}_{short_evt_id}.json"
     full_storage_path = f"{folder_path}/{file_name}"
 
     try:
-        # Convertir diccionario a bytes JSON formateados
         file_bytes = json.dumps(envelope, indent=2).encode('utf-8')
-        
-        # Inyección directa en el bucket 'event-logs'
         supabase_client.storage.from_("event-logs").upload(
             path=full_storage_path,
             file=file_bytes,
