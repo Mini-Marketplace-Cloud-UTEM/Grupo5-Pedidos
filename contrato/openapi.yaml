@@ -18,9 +18,9 @@ info:
 servers:
   - url: https://grupo5-pedidos-mock.onrender.com
     description: Mock público (Prism) — E2
-  - url: https://api-grupo5-pedidos.onrender.com/v1
-    description: Producción (Render) — E3
-  - url: http://localhost:8050/v1
+  - url: https://api-grupo5-pedidos.onrender.com
+    description: "Producción (Render) — E3. Nota: el servicio real no usa prefijo /v1 (ver TECHNICAL.md, sección 11 — Gaps conocidos)."
+  - url: http://localhost:8050
     description: Desarrollo local
 
 tags:
@@ -468,6 +468,10 @@ components:
           type: boolean
 
     Error:
+      # NOTA — Deuda técnica (E3): este es el schema de error objetivo del contrato.
+      # La implementación actual (app/main.py) usa HTTPException de FastAPI,
+      # que responde con {"detail": "..."} en lugar de este schema completo
+      # (sin "code" ni "correlationId"). Ver TECHNICAL.md, sección 11 — Gaps conocidos.
       type: object
       required: [code, message]
       properties:
