@@ -9,10 +9,11 @@
 
 | Recurso | URL |
 |---------|-----|
-| 🌐 Mock público (Render) | `https://grupo5-pedidos.onrender.com/v1` |
-| 📄 Swagger UI | `https://api-grupo5-pedidos.onrender.com/docs` |
+| 🌐 Mock (E2 — Prism) | `https://grupo5-pedidos-mock.onrender.com` |
+| 🚀 Producción (E3 — FastAPI real) | `https://api-grupo5-pedidos.onrender.com/v1` |
+| 📄 Swagger UI (producción) | `https://api-grupo5-pedidos.onrender.com/docs` |
 | 📋 OpenAPI YAML | [`contrato/openapi.yaml`](contrato/openapi.yaml) |
-| 🗃️ Esquema SQL | [`app/schemas.py`](app/schemas.py) |
+| 🗃️ Esquema de datos | [`modelo-de-datos.md`](modelo-de-datos.md) |
 | 📬 Colección Postman | [`tests/postman_collection.json`](tests/postman_collection.json) |
 | 📡 Contrato de eventos | [`contrato/events.md`](contrato/events.md) |
 
@@ -41,7 +42,7 @@ Todos los endpoints (excepto `/health`) requieren `Authorization: Bearer <token>
 ### Ejemplo rápido — crear un pedido
 
 ```bash
-curl -X POST https://grupo5-pedidos.onrender.com/v1/orders \
+curl -X POST https://api-grupo5-pedidos.onrender.com/v1/orders \
   -H "Authorization: Bearer <token>" \
   -H "Idempotency-Key: f47ac10b-58cc-4372-a567-0e02b2c3d479" \
   -H "Content-Type: application/json" \
@@ -111,7 +112,7 @@ Ver payloads completos en [`eventos/events-schema.json`](eventos/events-schema.j
 
 1. Importar [`pruebas/postman-collection.json`](pruebas/postman-collection.json) en Postman.
 2. Configurar las variables de entorno:
-   - `baseUrl` → `https://grupo5-pedidos.onrender.com/v1`
+   - `baseUrl` → `https://api-grupo5-pedidos.onrender.com/v1`
    - `authToken` → `Bearer <jwt-de-G2>`
    - `userId` → UUID del usuario de prueba
 3. Ejecutar la carpeta **"1. Flujo Feliz"** para el camino completo, luego **"2. Casos de borde"** para errores.
@@ -120,7 +121,7 @@ Con Newman (CLI):
 ```bash
 npm install -g newman
 newman run pruebas/postman-collection.json \
-  --env-var "baseUrl=https://grupo5-pedidos.onrender.com/v1" \
+  --env-var "baseUrl=https://api-grupo5-pedidos.onrender.com/v1" \
   --env-var "authToken=Bearer mock-token" \
   --env-var "userId=e9d8c7b6-a543-2109-8765-fedcba098765"
 ```
