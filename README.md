@@ -10,7 +10,7 @@
 | Recurso | URL |
 |---------|-----|
 | 🌐 Mock público (Render) | `https://grupo5-pedidos.onrender.com/v1` |
-| 📄 Swagger UI | `https://grupo5-pedidos.onrender.com/docs` |
+| 📄 Swagger UI | `https://api-grupo5-pedidos.onrender.com/docs` |
 | 📋 OpenAPI YAML | [`contrato/openapi.yaml`](contrato/openapi.yaml) |
 | 🗃️ Esquema SQL | [`app/schemas.py`](app/schemas.py) |
 | 📬 Colección Postman | [`tests/postman_collection.json`](tests/postman_collection.json) |
