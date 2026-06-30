@@ -72,10 +72,56 @@ curl -X POST https://grupo5-pedidos.onrender.com/v1/orders \
 
 ## Máquina de estados
 
+<<<<<<< HEAD
 ```
 CREATED → PAYMENT_PENDING → PAID → READY_TO_SHIP → SHIPPED → DELIVERED
     │              │
     └─ CANCELLED   └─ FAILED
+=======
+| Capa | Tecnología |
+| --- | --- |
+| Runtime | Python 3.12+ |
+| Framework API | FastAPI + Pydantic v2 |
+| Persistencia | PostgreSQL (Render / Supabase) vía SQLAlchemy ORM |
+| Contenedorización | Docker |
+| CI/CD | GitHub Actions (lint + auto-deploy a Render) |
+
+---
+
+## URLs
+
+| Entorno | URL |
+| --- | --- |
+| Mock (Prism / Render) | `https://api-grupo5-pedidos.onrender.com/docs` |
+| Producción (E3) | `https://api-grupo5-pedidos.onrender.com/v1` *(pendiente E3)* |
+| Local | `http://localhost:8050/v1` |
+
+---
+
+## Endpoints expuestos (v1.2.0 - Sincronizado Multi-Origen G6)
+
+| Método | Endpoint | Descripción | Consumidor primario |
+| --- | --- | --- | --- |
+| `POST` | `/orders` | Crear pedido (Idempotency-Key obligatorio) | Grupo 4 (Checkout) |
+| `GET` | `/orders/{orderId}` | Obtener pedido por ID | Grupo 1 (BFF) |
+| `GET` | `/users/{userId}/orders` | Listar pedidos de un usuario (paginado) | Grupo 1 (BFF / Frontend) |
+| `PATCH` | `/orders/{orderId}/status` | Transicionar estado (uso interno / eventos) | Lógica interna |
+
+---
+
+## Máquina de estados del pedido
+
+```text
+[G4 Checkout]
+      │
+      ▼
+   CREATED → PAYMENT_PENDING → PAID → READY_TO_SHIP → SHIPPED → DELIVERED
+                    │
+                    ▼
+                 FAILED → ORDER_CANCELLED
+                    │
+                 CANCELLED
+>>>>>>> 3f97c127516707d79023191960200a335c4fb9e4
 ```
 
 Transiciones no permitidas retornan `409 INVALID_STATUS_TRANSITION`.
