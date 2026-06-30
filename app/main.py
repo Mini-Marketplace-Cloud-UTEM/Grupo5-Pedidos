@@ -92,7 +92,7 @@ async def create_order(
         user_id=str(request.userId),
         status="CREATED",
         shipment_ids=[],
-        shipping_address=request.shipping_address.model_dump() if request.shipping_address else None,
+        shipping_address=request.shippingAddress.model_dump() if request.shippingAddress else None,
         subtotal=calculated_subtotal,
         shipping_cost=shipping_cost,
         total_amount=total_amount,
