@@ -1,0 +1,52 @@
+name: CI
+
+# Se ejecuta en cada push o pull request hacia main.
+# Render mantiene el auto-deploy al hacer push a main; este workflow
+# agrega una validación previa (lint + contrato) antes de ese despliegue.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-python:
+    name: Lint del código (app/)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias del proyecto
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Instalar ruff (linter)
+        run: pip install ruff
+
+      - name: Ejecutar ruff sobre app/
+        run: ruff check app/ --output-format=github
+
+      - name: Verificar que el código compila (sintaxis válida)
+        run: python -m py_compile app/*.py
+
+  validate-openapi:
+    name: Validar contrato OpenAPI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validar sintaxis y estructura de contrato/openapi.yaml
+        run: npx --yes @redocly/cli@latest lint contrato/openapi.yaml
