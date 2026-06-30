@@ -10,7 +10,7 @@
 | Recurso | URL |
 |---------|-----|
 | 🌐 Mock (E2 — Prism) | `https://grupo5-pedidos-mock.onrender.com` |
-| 🚀 Producción (E3 — FastAPI real) | `https://api-grupo5-pedidos.onrender.com/v1` |
+| 🚀 Producción (E3 — FastAPI real) | `https://api-grupo5-pedidos.onrender.com` |
 | 📄 Swagger UI (producción) | `https://api-grupo5-pedidos.onrender.com/docs` |
 | 📋 OpenAPI YAML | [`contrato/openapi.yaml`](contrato/openapi.yaml) |
 | 🗃️ Esquema de datos | [`modelo-de-datos.md`](modelo-de-datos.md) |
@@ -31,18 +31,20 @@ Recibe un pedido ya validado desde **Grupo 4 (Checkout)**, lo persiste con estad
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| `GET` | `/v1/health` | Health check — sin autenticación |
-| `POST` | `/v1/orders` | Crear pedido · requiere `Idempotency-Key` header |
-| `GET` | `/v1/orders/{orderId}` | Detalle de un pedido |
-| `GET` | `/v1/orders?userId=&page=&pageSize=` | Listado paginado por usuario |
-| `PATCH` | `/v1/orders/{orderId}/status` | Transición de estado |
+| `GET` | `/` | Health check liviano — sin autenticación (no valida BD) |
+| `POST` | `/orders` | Crear pedido · requiere `Idempotency-Key` header |
+| `GET` | `/orders/{orderId}` | Detalle de un pedido |
+| `GET` | `/users/{userId}/orders?page=&pageSize=` | Listado paginado por usuario |
+| `PATCH` | `/orders/{orderId}/status` | Transición de estado |
 
-Todos los endpoints (excepto `/health`) requieren `Authorization: Bearer <token>`.
+> ⚠️ El servicio real (E3) no usa prefijo `/v1` — ver `TECHNICAL.md` sección 11 (Gaps conocidos).
+
+Todos los endpoints (excepto `/`) requieren `Authorization: Bearer <token>`.
 
 ### Ejemplo rápido — crear un pedido
 
 ```bash
-curl -X POST https://api-grupo5-pedidos.onrender.com/v1/orders \
+curl -X POST https://api-grupo5-pedidos.onrender.com/orders \
   -H "Authorization: Bearer <token>" \
   -H "Idempotency-Key: f47ac10b-58cc-4372-a567-0e02b2c3d479" \
   -H "Content-Type: application/json" \
@@ -91,7 +93,7 @@ Transiciones no permitidas retornan `409 INVALID_STATUS_TRANSITION`.
 | `ORDER_STATUS_CHANGED` | Cada transición de estado | G7, G9 |
 | `ORDER_CANCELLED` | Al cancelar o fallar | G7, G9 |
 
-Ver payloads completos en [`eventos/events-schema.json`](eventos/events-schema.json).
+Ver payloads completos en [`contrato/events.md`](contrato/events.md).
 
 ---
 
@@ -110,18 +112,17 @@ Ver payloads completos en [`eventos/events-schema.json`](eventos/events-schema.j
 
 ## Cómo probar
 
-1. Importar [`pruebas/postman-collection.json`](pruebas/postman-collection.json) en Postman.
+1. Importar [`tests/postman_collection.json`](tests/postman_collection.json) en Postman.
 2. Configurar las variables de entorno:
-   - `baseUrl` → `https://api-grupo5-pedidos.onrender.com/v1`
+   - `baseUrl` → `https://api-grupo5-pedidos.onrender.com`
    - `authToken` → `Bearer <jwt-de-G2>`
    - `userId` → UUID del usuario de prueba
-3. Ejecutar la carpeta **"1. Flujo Feliz"** para el camino completo, luego **"2. Casos de borde"** para errores.
 
 Con Newman (CLI):
 ```bash
 npm install -g newman
-newman run pruebas/postman-collection.json \
-  --env-var "baseUrl=https://api-grupo5-pedidos.onrender.com/v1" \
+newman run tests/postman_collection.json \
+  --env-var "baseUrl=https://api-grupo5-pedidos.onrender.com" \
   --env-var "authToken=Bearer mock-token" \
   --env-var "userId=e9d8c7b6-a543-2109-8765-fedcba098765"
 ```
@@ -134,14 +135,23 @@ newman run pruebas/postman-collection.json \
 Grupo5-Pedidos/
 ├── README.md                    ← este archivo
 ├── TECHNICAL.md                 ← documentación interna de implementación
+├── app/                          ← código fuente del servicio real (FastAPI)
+│   ├── main.py
+│   ├── database.py
+│   ├── models.py
+│   ├── schemas.py
+│   └── events_logger.py
 ├── contrato/
-│   └── openapi.yaml             ← contrato REST (OpenAPI 3.0.3)
-├── eventos/
-│   └── events-schema.json       ← esquemas JSON de eventos pub/sub
-├── sql/
-│   └── schema.sql               ← esquema físico PostgreSQL
-└── pruebas/
-    └── postman-collection.json  ← colección de pruebas
+│   ├── openapi.yaml             ← contrato REST (OpenAPI 3.0.3)
+│   └── events.md                ← contrato de eventos Pub/Sub
+├── docs/
+│   └── entregables-E2.md        ← guía de operación y pruebas del mock
+├── tests/
+│   └── postman_collection.json  ← colección de pruebas
+├── modelo-de-datos.md
+├── seed.py                      ← script para poblar la BD con datos de prueba
+├── Dockerfile.txt
+└── requirements.txt
 ```
 
 ---
