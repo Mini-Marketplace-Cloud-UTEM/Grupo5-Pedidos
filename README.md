@@ -1,169 +1,150 @@
-# Grupo 5 — Pedidos / Order Management
+# 📦 Grupo 5 — Order Management Service
 
-Microservicio responsable de administrar, persistir y transicionar el ciclo de
-vida de las órdenes de compra dentro del ecosistema **Mini Marketplace Cloud UTEM**.
-Actúa como registro maestro de las transacciones comerciales confirmadas de la
-plataforma.
+> **Mini Marketplace Cloud · INFE6001-411-TEORIA-2026-1**  
+> Servicio central del ecosistema: administra el ciclo de vida completo de un pedido.
 
 ---
 
-## Estructura del repositorio
+## 🔗 Links rápidos
 
-```text
-Grupo5-Pedidos/
-├── contrato/
-│   ├── openapi.yaml                  # Contrato REST oficial (fuente de verdad v1.2.0)
-│   └── events.md                     # Esquemas y contratos de eventos Pub/Sub
-├── app/
-│   ├── main.py                       # Entry point FastAPI
-│   ├── database.py                   # Configuración ORM y conexión PostgreSQL
-│   ├── models.py                     # Esquemas relacionales SQLAlchemy
-│   └── schemas.py                    # Validadores Pydantic v2 (camelCase)
-├── tests/
-│   └── G5_Orders_Collection.json     # Colección de pruebas (Bruno / Postman / Insomnia)
-├── Dockerfile
-└── README.md
+| Recurso | URL |
+|---------|-----|
+| 🌐 Mock público (Render) | `https://grupo5-pedidos.onrender.com/v1` |
+| 📄 Swagger UI | `https://grupo5-pedidos.onrender.com/docs` |
+| 📋 OpenAPI YAML | [`contrato/openapi.yaml`](contrato/openapi.yaml) |
+| 🗃️ Esquema SQL | [`sql/schema.sql`](sql/schema.sql) |
+| 📬 Colección Postman | [`pruebas/postman-collection.json`](pruebas/postman-collection.json) |
+| 📡 Contrato de eventos | [`eventos/events-schema.json`](eventos/events-schema.json) |
+
+---
+
+## ¿Qué hace este servicio?
+
+Recibe un pedido ya validado desde **Grupo 4 (Checkout)**, lo persiste con estado `CREATED` y administra todas las transiciones hasta `DELIVERED` o `CANCELLED`. Es el servicio que más grupos consumen en el ecosistema.
+
+**No valida stock ni precio** — eso lo hace G4 antes de llamar a este servicio.
+
+---
+
+## Endpoints disponibles en el mock
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| `GET` | `/v1/health` | Health check — sin autenticación |
+| `POST` | `/v1/orders` | Crear pedido · requiere `Idempotency-Key` header |
+| `GET` | `/v1/orders/{orderId}` | Detalle de un pedido |
+| `GET` | `/v1/orders?userId=&page=&pageSize=` | Listado paginado por usuario |
+| `PATCH` | `/v1/orders/{orderId}/status` | Transición de estado |
+
+Todos los endpoints (excepto `/health`) requieren `Authorization: Bearer <token>`.
+
+### Ejemplo rápido — crear un pedido
+
+```bash
+curl -X POST https://grupo5-pedidos.onrender.com/v1/orders \
+  -H "Authorization: Bearer <token>" \
+  -H "Idempotency-Key: f47ac10b-58cc-4372-a567-0e02b2c3d479" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "e9d8c7b6-a543-2109-8765-fedcba098765",
+    "items": [
+      {
+        "productId": "f0e9d8c7-b6a5-4321-0987-fedcba098765",
+        "name": "Notebook Lenovo IdeaPad",
+        "quantity": 2,
+        "unitPrice": 799990,
+        "subtotal": 1599980
+      }
+    ],
+    "shippingAddress": {
+      "street": "Av. Libertador 1234",
+      "city": "Santiago",
+      "region": "Metropolitana",
+      "country": "Chile"
+    },
+    "subtotal": 1599980,
+    "shippingCost": 4990,
+    "totalAmount": 1604970
+  }'
 ```
 
 ---
 
-## Stack tecnológico
+## Máquina de estados
 
-| Capa | Tecnología |
-| --- | --- |
-| Runtime | Python 3.12+ |
-| Framework API | FastAPI + Pydantic v2 |
-| Persistencia | PostgreSQL (Render / Supabase) vía SQLAlchemy ORM |
-| Contenedorización | Docker |
-| CI/CD | GitHub Actions (lint + auto-deploy a Render) |
-
----
-
-## URLs
-
-| Entorno | URL |
-| --- | --- |
-| Mock (Prism / Render) | `https://grupo5-pedidos-mock.onrender.com` |
-| Producción (E3) | `https://api-grupo5-pedidos.onrender.com/v1` *(pendiente E3)* |
-| Local | `http://localhost:8050/v1` |
-
----
-
-## Endpoints expuestos (v1.2.0 - Sincronizado Multi-Origen G6)
-
-| Método | Endpoint | Descripción | Consumidor primario |
-| --- | --- | --- | --- |
-| `POST` | `/orders` | Crear pedido (Idempotency-Key obligatorio) | Grupo 4 (Checkout) |
-| `GET` | `/orders/{orderId}` | Obtener pedido por ID | Grupo 1 (BFF) |
-| `GET` | `/users/{userId}/orders` | Listar pedidos de un usuario (paginado) | Grupo 1 (BFF / Frontend) |
-| `PATCH` | `/orders/{orderId}/status` | Transicionar estado (uso interno / eventos) | Lógica interna |
-
----
-
-## Máquina de estados del pedido
-
-```text
-[G4 Checkout]
-      │
-      ▼
-   CREATED → PAYMENT_PENDING → PAID → READY_TO_SHIP → SHIPPED → DELIVERED
-                    │
-                    ▼
-                 FAILED → ORDER_CANCELLED
-                    │
-                 CANCELLED
+```
+CREATED → PAYMENT_PENDING → PAID → READY_TO_SHIP → SHIPPED → DELIVERED
+    │              │
+    └─ CANCELLED   └─ FAILED
 ```
 
-Transiciones válidas (con lógica de agregación Multi-Origen):
-
-| Desde | Hacia | Disparador |
-| --- | --- | --- |
-| `CREATED` | `PAYMENT_PENDING` | Inmediato al crear la orden |
-| `PAYMENT_PENDING` | `PAID` | Evento `PAYMENT_APPROVED` de G8 |
-| `PAYMENT_PENDING` | `FAILED` | Evento `PAYMENT_REJECTED` de G8 |
-| `PAID` | `READY_TO_SHIP` | Confirmación síncrona de G6 (`POST /api/v1/shipments`) retorna arreglo de IDs |
-| `READY_TO_SHIP` | `SHIPPED` | Polling a G6 devuelve `IN_TRANSIT` para **TODOS** los `shipmentIds` |
-| `SHIPPED` | `DELIVERED` | Polling a G6 devuelve `DELIVERED` para **TODOS** los `shipmentIds` |
-| `READY_TO_SHIP` / `SHIPPED` | `CANCELLED` | Polling a G6 devuelve `FAILED` para **AL MENOS UN** `shipmentId` |
-
-Cualquier transición no listada devuelve `409 Conflict`.
+Transiciones no permitidas retornan `409 INVALID_STATUS_TRANSITION`.
 
 ---
 
 ## Eventos publicados
 
-| Evento | Cuándo se emite | Consumidores |
-| --- | --- | --- |
-| `ORDER_CREATED` | Al crear la orden exitosamente | G7 (Reportería), G8 (Notificaciones) |
-| `ORDER_STATUS_CHANGED` | En cada transición de estado | G7 (Reportería), G8 (Notificaciones) |
-| `ORDER_CANCELLED` | Por fallo de pago o despacho parcial/total | G7 (Reportería), G8 (Notificaciones) |
+| Evento | Cuándo | Consumidores |
+|--------|--------|--------------|
+| `ORDER_CREATED` | Al crear el pedido | G7 Reportería, G9 Notificaciones |
+| `ORDER_STATUS_CHANGED` | Cada transición de estado | G7, G9 |
+| `ORDER_CANCELLED` | Al cancelar o fallar | G7, G9 |
 
-Ver esquemas completos en `contrato/events.md`.
-
----
-
-## Eventos consumidos
-
-| Evento | Productor | Acción de G5 |
-| --- | --- | --- |
-| `PAYMENT_APPROVED` | G8 (Pagos) | Transiciona a `PAID`; consulta G3; llama a G6 para crear envíos |
-| `PAYMENT_REJECTED` | G8 (Pagos) | Transiciona a `FAILED`; emite `ORDER_CANCELLED` |
-| `PAYMENT_PENDING` | G8 (Pagos) | Solo log; sin cambio de estado |
-| `SHIPMENT_IN_TRANSIT` *(bloqueado)* | G6 (Despacho) | Mitigado vía polling iterativo REST — ver abajo |
-| `SHIPMENT_DELIVERED` *(bloqueado)* | G6 (Despacho) | Mitigado vía polling iterativo REST — ver abajo |
+Ver payloads completos en [`eventos/events-schema.json`](eventos/events-schema.json).
 
 ---
 
-## Integración con otros grupos
+## Grupos que deben integrar con este servicio
 
-| Grupo | Rol | Tipo de integración |
-| --- | --- | --- |
-| Grupo 2 (Identidad) | Valida JWT entrantes (`POST /auth/validate`) | REST síncrono |
-| Grupo 3 (Catálogo) | G5 obtiene `originCd` y dimensiones físicas por ítem | REST síncrono |
-| Grupo 4 (Checkout) | Invoca `POST /orders` al confirmar compra | REST síncrono |
-| Grupo 6 (Despacho) | G5 envía array a `POST /api/v1/shipments` tras `PAID`; polling iterativo | REST síncrono + polling |
-| Grupo 7 (Reportería) | Consume `ORDER_CREATED`, `ORDER_STATUS_CHANGED` | Evento asíncrono |
-| Grupo 8 (Pagos/Notif) | G5 consume `PAYMENT_APPROVED/REJECTED`; G8 consume eventos de G5 | Evento asíncrono (bidireccional) |
-
-### Bloqueo temporal con Grupo 6 y Soporte Multi-Origen
-
-G6 actualizó a v1.2 (Soporte Multi-Origen) y retorna un arreglo de cajas físicas. Además, **no tiene un worker activo** que despache mensajes al broker. Mientras dure el bloqueo, G5 ejecuta polling iterativo (cada 60 s) por **cada caja registrada**: `GET /api/v1/shipments/{shipmentId}`.
-
-Las llamadas de este worker deben incluir:
-
-| Header | Valor |
-| --- | --- |
-| `X-Request-Id` | UUIDv4 aleatorio generado por el worker en cada llamada |
-| `X-Correlation-Id` | UUID original del pedido |
-| `X-Consumer` | `"G5-Pedidos"` |
-
-Cuando G6 active su worker, el polling iterativo se reemplaza por consumo real de eventos, donde G5 agregará los estados asíncronamente en su base de datos.
+| Grupo | Relación | Qué necesitan |
+|-------|----------|---------------|
+| **G4 Checkout** | Llama `POST /orders` | Body con items, dirección y montos ya validados |
+| **G1 BFF** | Consulta estado | `GET /orders/{orderId}` y `GET /orders?userId=` |
+| **G6 Pagos** | Publica eventos que G5 consume | `PAYMENT_APPROVED` / `PAYMENT_REJECTED` |
+| **G7 Reportería** | Consume eventos | `ORDER_CREATED`, `ORDER_STATUS_CHANGED` |
+| **G8 Despacho** | G5 llama a crear envío | `POST /api/v1/shipments` tras `PAID` |
+| **G9 Notificaciones** | Consume eventos | `ORDER_CREATED`, `ORDER_STATUS_CHANGED`, `ORDER_CANCELLED` |
 
 ---
 
-## Headers obligatorios (estándar ecosistema)
+## Cómo probar
 
-```http
-Authorization: Bearer <token_jwt_grupo_2>
-Idempotency-Key: <uuid_v4>        # obligatorio en POST /orders
-X-Correlation-Id: <uuid_v4>       # recomendado en todas las requests
-```
+1. Importar [`pruebas/postman-collection.json`](pruebas/postman-collection.json) en Postman.
+2. Configurar las variables de entorno:
+   - `baseUrl` → `https://grupo5-pedidos.onrender.com/v1`
+   - `authToken` → `Bearer <jwt-de-G2>`
+   - `userId` → UUID del usuario de prueba
+3. Ejecutar la carpeta **"1. Flujo Feliz"** para el camino completo, luego **"2. Casos de borde"** para errores.
 
-Headers adicionales requeridos en llamadas **salientes** hacia G6:
-
-```http
-X-Request-Id: <uuid_v4>           # nuevo UUID por cada llamada del worker
-X-Consumer: G5-Pedidos
-```
-
----
-
-## Cómo probar el mock
-
+Con Newman (CLI):
 ```bash
-# Instalar Prism globalmente
-npm install -g @stoplight/prism-cli
-
-# Levantar mock local apuntando al contrato
-prism mock contrato/openapi.yaml -p 8050 -h 0.0.0.0
+npm install -g newman
+newman run pruebas/postman-collection.json \
+  --env-var "baseUrl=https://grupo5-pedidos.onrender.com/v1" \
+  --env-var "authToken=Bearer mock-token" \
+  --env-var "userId=e9d8c7b6-a543-2109-8765-fedcba098765"
 ```
+
+---
+
+## Estructura del repositorio
+
+```
+Grupo5-Pedidos/
+├── README.md                    ← este archivo
+├── TECHNICAL.md                 ← documentación interna de implementación
+├── contrato/
+│   └── openapi.yaml             ← contrato REST (OpenAPI 3.0.3)
+├── eventos/
+│   └── events-schema.json       ← esquemas JSON de eventos pub/sub
+├── sql/
+│   └── schema.sql               ← esquema físico PostgreSQL
+└── pruebas/
+    └── postman-collection.json  ← colección de pruebas
+```
+
+---
+
+## Equipo
+
+**Grupo 5 — INFE6001-411-TEORIA-2026-1**
