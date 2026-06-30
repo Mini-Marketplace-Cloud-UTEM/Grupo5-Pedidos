@@ -12,9 +12,9 @@
 | 🌐 Mock público (Render) | `https://grupo5-pedidos.onrender.com/v1` |
 | 📄 Swagger UI | `https://grupo5-pedidos.onrender.com/docs` |
 | 📋 OpenAPI YAML | [`contrato/openapi.yaml`](contrato/openapi.yaml) |
-| 🗃️ Esquema SQL | [`sql/schema.sql`](sql/schema.sql) |
-| 📬 Colección Postman | [`pruebas/postman-collection.json`](pruebas/postman-collection.json) |
-| 📡 Contrato de eventos | [`eventos/events-schema.json`](eventos/events-schema.json) |
+| 🗃️ Esquema SQL | [`app/schema.py`](app/schema.py) |
+| 📬 Colección Postman | [`tests/postman_collection.json`](tests/postman_collection.json) |
+| 📡 Contrato de eventos | [`contrato/events.md`](contrato/events.md) |
 
 ---
 
