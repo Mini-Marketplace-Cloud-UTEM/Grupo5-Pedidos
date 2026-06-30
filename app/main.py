@@ -20,7 +20,7 @@ app = FastAPI(
 )
 
 # Enrutamiento de URLs de la malla del marketplace (Variables de entorno en Render)
-G2_AUTH_URL = os.getenv("G2_AUTH_URL", "https://api-grupo2-auth.onrender.com")
+G2_AUTH_URL = os.getenv("G2_AUTH_URL", "https://grupo2-identidadusuario.onrender.com")
 G3_CATALOG_URL = os.getenv("G3_CATALOG_URL", "https://api-grupo3-catalogo.onrender.com")
 G6_DELIVERY_URL = os.getenv("G6_DELIVERY_URL", "https://api-grupo6-despacho.onrender.com")
 
@@ -46,9 +46,11 @@ async def verify_security_and_role(authorization: Optional[str] = Header(None), 
                 raise HTTPException(status_code=401, detail="Token inválido o expirado según el Grupo 2.")
             
             auth_data = response.json()
+            user_data = auth_data.get("user", {})
+            roles = user_data.get("roles", [])
             return {
-                "userId": auth_data.get("userId"),
-                "role": auth_data.get("role")  # 'customer' o 'admin'
+                "userId": user_data.get("id"),
+                "role": "admin" if "admin" in roles else (roles[0] if roles else None)
             }
         except httpx.RequestError:
             raise HTTPException(status_code=503, detail="Servicio de Autenticación (G2) no disponible de forma síncrona.")
