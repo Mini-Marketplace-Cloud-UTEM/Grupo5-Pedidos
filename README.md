@@ -43,7 +43,7 @@ Grupo5-Pedidos/
 
 | Entorno | URL |
 | --- | --- |
-| Mock (Prism / Render) | `https://grupo5-pedidos-mock.onrender.com` |
+| Mock (Prism / Render) | `https://api-grupo5-pedidos.onrender.com/docs` |
 | Producción (E3) | `https://api-grupo5-pedidos.onrender.com/v1` *(pendiente E3)* |
 | Local | `http://localhost:8050/v1` |
 
